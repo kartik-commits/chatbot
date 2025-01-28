@@ -76,9 +76,12 @@ function App() {
       console.log('API Response:', data); // Log response for debugging
   
       // Process and add bot's response
+      const rawContent = data.choices[0]?.message?.content || 'No response received.';
+      const cleanContent = rawContent.replace(/<think>.*?<\/think>/gs, '').trim();
+      
       const botMessage: Message = {
         id: Date.now().toString(),
-        content: data.choices[0]?.message?.content || 'No response received.',
+        content: cleanContent,
         role: 'assistant',
         timestamp: new Date(),
       };
