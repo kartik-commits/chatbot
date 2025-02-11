@@ -1,11 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from "react";
+import { Send, Bot, User, Loader2, AlertCircle } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
 
 interface Message {
   id: string;
   content: string;
   role: 'user' | 'assistant';
   timestamp: Date;
+  isError?: boolean;
 }
 
 function App() {
@@ -13,18 +18,40 @@ function App() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    setTimeout(scrollToBottom, 100); // Delay to ensure smooth scrolling
   }, [messages]);
+
+  // Auto-focus input on mount and after sending a message
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [isLoading]);
+  // Function to clean and format messages
+  const cleanMessageContent = (content: string) => {
+    return content
+      .trim()
+      .replace(/^\[\s*|\s*\]$/g, "") // Remove surrounding square brackets
+      .replace(/\n/g, "  \n") // Preserve line breaks
+      .replace(/\\\[(.*?)\\\]/g, "$$$1$$") // Convert \[...\] to block math ($$...$$)
+      .replace(/\\\((.*?)\\\)/g, "$$$1$"); // Convert \(...\) to inline math ($...$)
+  };
+  // Handle Enter key submission
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e as any);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || isLoading) return;
   
     // Add user message
     const userMessage: Message = {
@@ -119,12 +146,12 @@ function App() {
           {messages.map((message) => (
             <div
               key={message.id}
-              className={`flex items-start gap-3 ${
+              className={`flex items-start gap-3 animate-fade-in ${ 
                 message.role === 'user' ? 'flex-row-reverse' : ''
               }`}
             >
               <div
-                className={`p-2 rounded-full ${
+                className={`p-2 rounded-full flex-shrink-0 ${
                   message.role === 'user' ? 'bg-green-500' : 'bg-gray-800'
                 }`}
               >
@@ -141,7 +168,22 @@ function App() {
                     : 'bg-gray-800 text-gray-100'
                 }`}
               >
-                <p className="text-sm">{message.content}</p>
+                {message.isError ? (
+                  <div className="flex items-center gap-2 text-red-400">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>{message.content}</span>
+                  </div>
+                ) : (
+                  <div className="prose prose-invert max-w-none">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                      className="text-sm"
+                    >
+                      {cleanMessageContent(message.content)}
+                    </ReactMarkdown>
+                  </div>
+                )}
                 <span className="text-xs opacity-50 mt-1 block">
                   {new Date(message.timestamp).toLocaleTimeString()}
                 </span>
@@ -149,7 +191,7 @@ function App() {
             </div>
           ))}
           {isLoading && (
-            <div className="flex items-center gap-2 text-gray-400">
+            <div className="flex items-center gap-2 text-gray-400 animate-fade-in">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-sm">AI is thinking...</span>
             </div>
@@ -164,17 +206,16 @@ function App() {
         >
           <div className="flex gap-2">
             <input
+              ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Type your message..."
               className="flex-1 px-4 py-2 rounded-lg bg-gray-800 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+              disabled={isLoading}
             />
-            <button
-              type="submit"
-              disabled={!input.trim() || isLoading}
-              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
+            <button type="submit" aria-label="Send Message" disabled={!input.trim() || isLoading}>
               <Send className="w-5 h-5" />
             </button>
           </div>
