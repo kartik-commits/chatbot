@@ -9,10 +9,15 @@ A modern, multi-chat AI assistant built with React and TypeScript. Supports Mark
 - **Multi-Chat Sessions:** Create, switch, and delete chats for different topics
 - **AI-Powered Responses:** Connects to an AI model for smart conversations (default: deepseek-r1-distill-qwen-7b)
 - **Markdown & Math:** Renders rich Markdown and LaTeX formulas in chat
-- **File Uploads:** Attach documents to each chat and view their names in history
-- **Dark/Light Mode:** Toggle between beautiful dark and light themes
+- **File Uploads:** Attach documents to each chat with validation (10MB limit, .pdf, .txt, .doc, .docx, .md)
+- **Dark/Light Mode:** Toggle between beautiful dark and light themes (preference saved)
 - **Animated UI:** Smooth transitions for sidebar, messages, and more
-- **Error Handling:** Friendly error messages when something goes wrong
+- **Error Handling:** Friendly error messages with helpful context
+- **Chat History:** All chats automatically saved to browser localStorage
+- **Auto-Generated Titles:** Chat titles created from first message
+- **Copy Messages:** Easily copy any message to clipboard
+- **Accessibility:** Full keyboard navigation and ARIA labels
+- **Input Validation:** Safe input handling with 5000 character limit
 
 ---
 
@@ -43,11 +48,13 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Usage
 
-- Start a new chat session from the sidebar
-- Type your message and hit enter (or click Send)
-- Upload documents to the current chat with the upload button
-- Toggle dark/light mode from the top bar
-- Delete chats from the sidebar as needed
+- **Start a new chat:** Click the "New Chat" button in the sidebar
+- **Send messages:** Type your message and hit Enter (or click Send button)
+- **Upload documents:** Click the upload button to attach files (.pdf, .txt, .doc, .docx, .md up to 10MB)
+- **Copy messages:** Click the copy icon on any message to copy its content
+- **Toggle theme:** Use the theme button in the header to switch between dark/light mode
+- **Delete chats:** Hover over a chat in the sidebar and click the trash icon
+- **Navigate with keyboard:** All interactive elements support keyboard navigation
 
 ---
 
@@ -59,6 +66,12 @@ Change the model, endpoint, or parameters in `src/App.tsx` under the `payload` o
 
 **Styling:**  
 Uses [Tailwind CSS](https://tailwindcss.com/) for rapid UI development.
+
+**Data Persistence:**  
+All chats, settings, and preferences are automatically saved to browser localStorage.
+
+**Performance:**  
+Code splitting is configured to optimize bundle size and loading times.
 
 ---
 
@@ -78,6 +91,9 @@ Uses [Tailwind CSS](https://tailwindcss.com/) for rapid UI development.
 - Swap out the AI backend/model by editing the fetch call in `src/App.tsx`
 - Adjust theme colors or add more UI polish via Tailwind CSS
 - Extend document upload to handle file contents or previews
+- Modify file upload limits and allowed extensions in `handleFileUpload` function
+- Adjust input character limit (default: 5000) in the `handleSubmit` function
+- Configure code splitting chunks in `vite.config.ts`
 
 ---
 
