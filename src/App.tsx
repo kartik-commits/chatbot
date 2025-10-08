@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Loader2, AlertCircle, Plus, Trash2, MessageSquare, Upload, Moon, Sun } from "lucide-react";
+import { Send, Bot, User, Loader2, AlertCircle, Plus, Trash2, MessageSquare, Upload, Moon, Sun, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
@@ -62,6 +62,7 @@ function App() {
     return savedDarkMode ? JSON.parse(savedDarkMode) : true;
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -123,10 +124,54 @@ function App() {
     }
   };
 
+  const copyToClipboard = async (content: string, messageId: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  };
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files && files.length > 0) {
-      const fileNames = Array.from(files).map((file) => file.name);
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+      const ALLOWED_EXTENSIONS = ['.pdf', '.txt', '.doc', '.docx', '.md'];
+      
+      const validFiles = Array.from(files).filter(file => {
+        const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+        if (!ALLOWED_EXTENSIONS.includes(extension)) {
+          console.warn(`File ${file.name} has unsupported extension`);
+          return false;
+        }
+        if (file.size > MAX_FILE_SIZE) {
+          console.warn(`File ${file.name} exceeds size limit`);
+          return false;
+        }
+        return true;
+      });
+
+      if (validFiles.length === 0) {
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          content: `Invalid files. Please upload files with extensions: ${ALLOWED_EXTENSIONS.join(', ')} and size less than 10MB.`,
+          role: "assistant",
+          timestamp: new Date(),
+          isError: true,
+        };
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.id === currentChatId
+              ? { ...chat, messages: [...chat.messages, errorMessage] }
+              : chat
+          )
+        );
+        return;
+      }
+
+      const fileNames = validFiles.map((file) => file.name);
       setChats((prev) =>
         prev.map((chat) =>
           chat.id === currentChatId
@@ -149,6 +194,11 @@ function App() {
             : chat
         )
       );
+    }
+    
+    // Reset the input value so the same file can be uploaded again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -369,34 +419,51 @@ function App() {
               >
                 {message.role === "user" ? <User size={20} aria-hidden="true" /> : <Bot size={20} aria-hidden="true" />}
               </div>
-              <div
-                className={`flex-1 px-4 py-2 rounded-lg ${
-                  message.role === "user"
-                    ? "bg-green-600 text-white"
-                    : darkMode
-                    ? "bg-gray-800 text-gray-100"
-                    : "bg-white text-gray-800"
-                }`}
-              >
-                {message.isError ? (
-                  <div className="flex items-center gap-2 text-red-400">
-                    <AlertCircle className="w-4 h-4" />
-                    <span>{message.content}</span>
-                  </div>
-                ) : (
-                  <div className="prose prose-invert max-w-none">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
-                      className="text-sm"
+              <div className="flex-1">
+                <div
+                  className={`px-4 py-2 rounded-lg ${
+                    message.role === "user"
+                      ? "bg-green-600 text-white"
+                      : darkMode
+                      ? "bg-gray-800 text-gray-100"
+                      : "bg-white text-gray-800"
+                  }`}
+                >
+                  {message.isError ? (
+                    <div className="flex items-center gap-2 text-red-400">
+                      <AlertCircle className="w-4 h-4" />
+                      <span>{message.content}</span>
+                    </div>
+                  ) : (
+                    <div className="prose prose-invert max-w-none">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                        className="text-sm"
+                      >
+                        {cleanMessageContent(message.content)}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-xs opacity-50">
+                      {new Date(message.timestamp).toLocaleTimeString()}
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(message.content, message.id)}
+                      className={`p-1 rounded hover:bg-gray-700/50 transition-colors ${
+                        message.role === "user" ? "text-white" : darkMode ? "text-gray-400" : "text-gray-600"
+                      }`}
+                      aria-label="Copy message"
                     >
-                      {cleanMessageContent(message.content)}
-                    </ReactMarkdown>
+                      {copiedMessageId === message.id ? (
+                        <Check size={14} aria-hidden="true" />
+                      ) : (
+                        <Copy size={14} aria-hidden="true" />
+                      )}
+                    </button>
                   </div>
-                )}
-                <span className="text-xs opacity-50 mt-1 block">
-                  {new Date(message.timestamp).toLocaleTimeString()}
-                </span>
+                </div>
               </div>
             </motion.div>
           ))}
@@ -458,6 +525,7 @@ function App() {
               onChange={handleFileUpload}
               className="hidden"
               multiple
+              accept=".pdf,.txt,.doc,.docx,.md"
             />
           </div>
         </form>
