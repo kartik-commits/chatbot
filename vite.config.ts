@@ -7,4 +7,17 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'markdown-vendor': ['react-markdown', 'remark-math', 'rehype-katex'],
+          'animation-vendor': ['framer-motion'],
+          'katex-vendor': ['katex'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
+  },
 });
