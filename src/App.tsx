@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Send, Bot, User, Loader2, AlertCircle, Plus, Trash2, MessageSquare, Upload, Moon, Sun, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
@@ -29,6 +29,19 @@ const initialChat: Chat = {
   createdAt: new Date(),
   documents: [],
 };
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_EXTENSIONS = ['.pdf', '.txt', '.doc', '.docx', '.md'];
+const LOCALSTORAGE_DEBOUNCE_MS = 500;
+
+function cleanMessageContent(content: string): string {
+  return content
+    .trim()
+    .replace(/^\[\s*|\s*\]$/g, "")
+    .replace(/\n/g, "  \n")
+    .replace(/\\\[(.*?)\\\]/g, "$$$1$$")
+    .replace(/\\\((.*?)\\\)/g, "$$$1$$");
+}
 
 function App() {
   const [chats, setChats] = useState<Chat[]>(() => {
@@ -67,10 +80,16 @@ function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const currentChat = chats.find((chat) => chat.id === currentChatId) || chats[0];
+  const currentChat = useMemo(
+    () => chats.find((chat) => chat.id === currentChatId) || chats[0],
+    [chats, currentChatId]
+  );
 
   useEffect(() => {
-    localStorage.setItem("chatHistory", JSON.stringify(chats));
+    const timer = setTimeout(() => {
+      localStorage.setItem("chatHistory", JSON.stringify(chats));
+    }, LOCALSTORAGE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
   }, [chats]);
 
   useEffect(() => {
@@ -86,23 +105,33 @@ function App() {
   };
 
   useEffect(() => {
-    setTimeout(scrollToBottom, 100);
-  }, [currentChat.messages]);
+    // Double-rAF: first frame schedules the scroll after the browser has
+    // committed and painted the updated DOM (including new messages).
+    let inner: number;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(scrollToBottom);
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [currentChat?.messages]);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, [isLoading, currentChatId]);
 
-  const cleanMessageContent = (content: string) => {
-    return content
-      .trim()
-      .replace(/^\[\s*|\s*\]$/g, "")
-      .replace(/\n/g, "  \n")
-      .replace(/\\\[(.*?)\\\]/g, "$$$1$$")
-      .replace(/\\\((.*?)\\\)/g, "$$$1$$");
-  };
+  const cleanedMessageContents = useMemo(() => {
+    const map = new Map<string, string>();
+    currentChat?.messages.forEach((msg) => {
+      if (!msg.isError) {
+        map.set(msg.id, cleanMessageContent(msg.content));
+      }
+    });
+    return map;
+  }, [currentChat?.messages]);
 
-  const createNewChat = () => {
+  const createNewChat = useCallback(() => {
     const newChat: Chat = {
       id: Date.now().toString(),
       title: "New Chat",
@@ -112,17 +141,22 @@ function App() {
     };
     setChats((prev) => [...prev, newChat]);
     setCurrentChatId(newChat.id);
-  };
+  }, []);
 
-  const deleteChat = (chatId: string) => {
+  const deleteChat = useCallback((chatId: string) => {
     if (chats.length === 1) {
+      // createNewChat already calls setCurrentChatId for the new chat
       createNewChat();
+      setChats((prev) => prev.filter((chat) => chat.id !== chatId));
+      return;
     }
     setChats((prev) => prev.filter((chat) => chat.id !== chatId));
     if (currentChatId === chatId) {
-      setCurrentChatId(chats[0].id);
+      // Switch to the first chat that isn't being deleted
+      const nextChat = chats.find((chat) => chat.id !== chatId);
+      setCurrentChatId(nextChat!.id);
     }
-  };
+  }, [chats, currentChatId, createNewChat]);
 
   const copyToClipboard = async (content: string, messageId: string) => {
     try {
@@ -134,12 +168,9 @@ function App() {
     }
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files && files.length > 0) {
-      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-      const ALLOWED_EXTENSIONS = ['.pdf', '.txt', '.doc', '.docx', '.md'];
-      
       const validFiles = Array.from(files).filter(file => {
         const extension = '.' + file.name.split('.').pop()?.toLowerCase();
         if (!ALLOWED_EXTENSIONS.includes(extension)) {
@@ -172,14 +203,6 @@ function App() {
       }
 
       const fileNames = validFiles.map((file) => file.name);
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === currentChatId
-            ? { ...chat, documents: [...(chat.documents || []), ...fileNames] }
-            : chat
-        )
-      );
-
       const uploadMessage: Message = {
         id: Date.now().toString(),
         content: `Uploaded documents: ${fileNames.join(", ")}`,
@@ -187,10 +210,15 @@ function App() {
         timestamp: new Date(),
       };
 
+      // Batch documents + message into a single state update (one re-render)
       setChats((prev) =>
         prev.map((chat) =>
           chat.id === currentChatId
-            ? { ...chat, messages: [...chat.messages, uploadMessage] }
+            ? {
+                ...chat,
+                documents: [...(chat.documents || []), ...fileNames],
+                messages: [...chat.messages, uploadMessage],
+              }
             : chat
         )
       );
@@ -200,7 +228,7 @@ function App() {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
+  }, [currentChatId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -441,7 +469,7 @@ function App() {
                         rehypePlugins={[rehypeKatex]}
                         className="text-sm"
                       >
-                        {cleanMessageContent(message.content)}
+                        {cleanedMessageContents.get(message.id) ?? ""}
                       </ReactMarkdown>
                     </div>
                   )}
